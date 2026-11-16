@@ -1,0 +1,5 @@
+# Every crawler is welcome everywhere on this site.
+User-agent: *
+Allow: /
+
+Sitemap: https://unarbre.github.io/sitemap.xml
