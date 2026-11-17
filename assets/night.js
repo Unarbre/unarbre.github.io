@@ -1,8 +1,10 @@
 // The night at the top of the page: a starry sky with its Milky Way, ridgelines in parallax, a constellation shaped
 // like a tree, and campfires with cloaked figures around them. All are out at first. At the first scroll a fire
 // catches; the others answer it one by one, left and right, near and far, then the pseudonym appears. Clicking the
-// night lights the fires, then sends sparks up.
-// States are classes on <html>: awake (sky drawn), lit (the first fire caught), revealed (the name is shown).
+// night lights the fires, then sends sparks up. The scene is held in place for a short scroll while the fire catches;
+// once the name is out the hold is released, so the night is never a long way to cross again, down or back up.
+// States are classes on <html>: awake (sky drawn), lit (the first fire caught), revealed (the name is shown),
+// settled (the hold is gone).
 (() => {
   const root = document.documentElement;
   const night = document.querySelector('.night');
@@ -12,6 +14,12 @@
   const skyCtx = sky.getContext('2d');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // The scroll that lights the fire (a share of the screen: the very start of the first gesture), when the name comes
+  // out after it, and when the hold may be released (seconds after the fire caught: the name and its introduction are
+  // in). The length of the hold itself is --hold in style.css.
+  const IGNITE_AT = 0.03;
+  const REVEAL_AFTER = 1.6;
+  const RELEASE_AFTER = 3.6;
 
   // Each fire: its hearth (a point of the ridge drawing), its camp (vector flames, light on the ground, people), the
   // canvas of its embers, its halo, its size in the drawing's units and its lighting time after the first one.
@@ -55,6 +63,10 @@
   let litAt = null;
   let running = false;
   let inView = true;
+  let settled = false;
+  let touching = false;
+  let lastScroll = 0;
+  let settleTimer = 0;
 
   const now = () => performance.now() / 1000;
   // Smooth wandering value in [0, 1]: the breathing of the flames.
@@ -304,15 +316,43 @@
     if (litAt !== null) return;
     litAt = now();
     root.classList.add('lit');
-    setTimeout(() => root.classList.add('revealed'), reduced ? 0 : 2200);
+    setTimeout(() => root.classList.add('revealed'), reduced ? 0 : REVEAL_AFTER * 1000);
+    release();
+  }
+
+  // Releases the hold once the name is out, while the page is still (never under a finger, nor during a fling): the
+  // night shrinks to one screen and the page scrolls back by as much, so nothing moves on screen. The parallax stays
+  // where it was. From then on the night is a plain first screen, its fires burning.
+  function release() {
+    clearTimeout(settleTimer);
+    if (settled || litAt === null || touching) return;
+    const wait = Math.max(litAt + RELEASE_AFTER, lastScroll + 0.25) - now();
+    if (wait > 0) {
+      settleTimer = setTimeout(release, wait * 1000);
+      return;
+    }
+    const shift = Math.min(night.offsetHeight - stage.offsetHeight, Math.max(0, -night.getBoundingClientRect().top));
+    settled = true;
+    // Neither the browser's scroll anchoring nor the smooth scrolling of the page may add to the shift.
+    root.style.overflowAnchor = 'none';
+    root.style.scrollBehavior = 'auto';
+    root.classList.add('settled');
+    scrollBy(0, -shift);
+    requestAnimationFrame(() => {
+      root.style.overflowAnchor = '';
+      root.style.scrollBehavior = '';
+    });
   }
 
   function onScroll() {
+    lastScroll = now();
+    if (settled) return;
     const box = night.getBoundingClientRect();
-    const run = box.height - innerHeight;
-    progress = run > 0 ? Math.min(1, Math.max(0, -box.top / run)) : 0;
+    const hold = box.height - stage.offsetHeight;
+    progress = hold > 0 ? Math.min(1, Math.max(0, -box.top / hold)) : 0;
     stage.style.setProperty('--p', progress.toFixed(4));
-    if (-box.top > innerHeight * 0.08) light();
+    if (-box.top > innerHeight * IGNITE_AT) light();
+    release();
   }
 
   // Without motion: every fire already burns, drawn once.
@@ -342,6 +382,17 @@
     if (reduced) still();
   });
   addEventListener('scroll', onScroll, { passive: true });
+  addEventListener('touchstart', () => (touching = true), { passive: true });
+  for (const type of ['touchend', 'touchcancel']) {
+    addEventListener(
+      type,
+      (event) => {
+        touching = event.touches.length > 0;
+        release();
+      },
+      { passive: true },
+    );
+  }
   addEventListener(
     'pointermove',
     (event) => {
@@ -367,7 +418,9 @@
   });
 
   if (reduced) {
-    root.classList.add('awake', 'lit', 'revealed');
+    // Nothing to wait for: no hold either.
+    settled = true;
+    root.classList.add('awake', 'lit', 'revealed', 'settled');
     still();
   } else {
     awakeAt = now();

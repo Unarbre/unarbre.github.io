@@ -78,7 +78,10 @@ a:focus-visible, summary:focus-visible { outline: 1px solid var(--ember); outlin
 
 /* The night */
 
-.night { position: relative; height: 240svh; background: var(--night); }
+/* The scene stays pinned for a short hold (--hold) so the first fire can catch under the first scroll. Once the name
+   is out, night.js removes the hold (`settled`): from then on the night scrolls like any other part of the page. */
+.night { --hold: 70svh; position: relative; height: 100svh; background: var(--night); }
+.js:not(.settled) .night { height: calc(100svh + var(--hold)); }
 .stage {
   position: sticky;
   top: 0;
@@ -448,6 +451,7 @@ summary { cursor: pointer; color: var(--ember); font-size: 0.88rem; }
 /* Small screens: the constellation crowns the sky, the text sits beneath. */
 
 @media (max-width: 52rem) {
+  .night { --hold: 45svh; }
   .constellation {
     top: 8%;
     left: 50%;
